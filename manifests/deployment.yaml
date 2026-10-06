@@ -17,4 +17,4 @@ spec:
       runtimeClassName: gpu-enabled-class
       containers:
       - name: intelligent-train
-        image: quay.io/demo-ai-edge-crazy-train/intelligent-train:jetson
+        image: quay.io/mregan/intelligent-train-app-arm64:latest
