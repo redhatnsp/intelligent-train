@@ -158,10 +158,15 @@ them as an illustration of the shape of the deployment, not as something to appl
 - **A malformed frame terminates the process.** `on_message` has no error handling, so a
   payload that fails to decode propagates out of `cv2.imdecode` and stops inference until
   the container restarts.
-- **The container image may be running CPU inference.** `docker/Dockerfile` installs the
-  Jetson `onnxruntime_gpu-1.16.0` wheel and then runs `pip3 install -r requirements.txt`,
-  which contains a bare `onnxruntime`. Both packages provide the same `onnxruntime`
-  module, so the CPU build installs over the GPU one.
+- **The container image runs CPU inference, not GPU.** `docker/Dockerfile` installs the
+  Jetson `onnxruntime_gpu` wheel and then runs `pip3 install -r requirements.txt`, which
+  contains a bare `onnxruntime`. Both packages provide the same `onnxruntime` module, so
+  the CPU build lands on top of the GPU one. Verified by building the image on
+  2026-10-06: both `onnxruntime 1.23.2` and `onnxruntime-gpu 1.17.0` end up installed,
+  `import onnxruntime` resolves to the CPU build, and the only execution providers
+  offered are `['AzureExecutionProvider', 'CPUExecutionProvider']` — while `app.py`
+  defaults to requesting `CUDAExecutionProvider`. Confirm on the device with
+  `python3 -c "import onnxruntime; print(onnxruntime.get_available_providers())"`.
 - **Dependencies are unpinned.** `src/requirements.txt` lists bare package names, so the
   image contents depend on the day it was built. Pinning needs to be worked out against
   an actual aarch64/cp310 build, since the local development versions resolve differently.
