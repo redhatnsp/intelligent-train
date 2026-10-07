@@ -3,3 +3,4 @@ resources:
 - namespace.yaml
 - runtimeclass.yaml
 - deployment.yaml
+- service.yaml

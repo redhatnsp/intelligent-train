@@ -88,16 +88,6 @@ Publish the sample image from another:
 cd test && ./publish.sh
 ```
 
-> **Note**
-> On macOS `test/publish.sh` currently fails to encode the image and publishes an empty one, because
-> BSD `base64` rejects the GNU-style `-w0 <file>` arguments. Until that is fixed, publish by hand:
->
-> ```sh
-> cd test
-> printf '{"image": "%s", "id": "%s"}' "$(base64 < test.jpg | tr -d '\n')" "$(date -Iseconds)" \
->   | mosquitto_pub -h localhost -p 1883 -t train-image -s
-> ```
-
 The application logs the inference, and the subscriber receives the detections:
 
 ```text
@@ -118,4 +108,4 @@ Prometheus metrics are exposed on port `8000` throughout.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
