@@ -25,6 +25,32 @@ is the sole thing it shares with the rest of the demo.
 
 Dependencies are managed by pip and are specified in the `src/requirements.txt` file.
 
+## Configuration
+
+Everything is configured through environment variables; there is no config file.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `MQTT_BROKER` | `localhost` | Broker hostname |
+| `MQTT_PORT` | `1883` | Broker port |
+| `MQTT_TOPIC` | `train-image` | Topic subscribed to for incoming frames |
+| `MQTT_PUB_TOPIC` | `train-model-result` | Topic the detections are published to |
+| `MODEL_PATH` | `models/model.onnx` | Path to the ONNX model. Relative, so the app must be run from the repository root |
+| `ONNXRUNTIME_PROVIDERS` | `["CUDAExecutionProvider"]` | onnxruntime execution providers, as a Python list literal. Use `["CPUExecutionProvider"]` off the Jetson |
+| `MIN_CONF_THRESHOLD` | `0.8` | Minimum confidence for a detection to be published. Applied after NMS, which itself uses a fixed 0.25/0.45 |
+| `IMG_IN_RESPONSE` | `True` | Whether to echo the source image back in the result. **Currently cannot be disabled — see Known issues** |
+
+The published detection payload looks like this, and `train-ceq-app` is the consumer:
+
+```json
+{ "id": "...", "image": "<base64>", "detections": [ ... ],
+  "pre-process": "0.00s", "inference": "0.04s", "post-process": "0.01s",
+  "total": "0.05s", "scale": 1.09375 }
+```
+
+Note that `confidence` and each `box` element are emitted as **strings**, not numbers.
+The Java consumer declares them as numeric types and relies on Jackson coercing them.
+
 ## Related Modules
 
 Intelligent-Train is part of a larger system that includes the following modules:
@@ -105,6 +131,45 @@ The application logs the inference, and the subscriber receives the detections:
 ```
 
 Prometheus metrics are exposed on port `8000` throughout.
+
+### Benchmark
+
+`test/load.sh` publishes the sample image in a loop and reports the mean round-trip time.
+It needs the application and a broker already running, and is run from the `test/`
+directory like `publish.sh`. Set `ITERATIONS` to change the default 100 passes.
+
+## Deployment
+
+**`manifests/` is reference only and is not what runs on the train.** The deployed
+configuration is rendered from the Helm chart in the
+[gitops](https://github.com/redhatnsp/gitops) repository (`train/` chart), which is
+templated onto the Jetson at boot. The manifests here set no environment variables at
+all, so `MQTT_BROKER` would fall back to `localhost` and never reach the broker — treat
+them as an illustration of the shape of the deployment, not as something to apply.
+
+## Known issues
+
+- **`IMG_IN_RESPONSE` cannot be turned off.** It is read as
+  `bool(os.environ.get("IMG_IN_RESPONSE", True))`, and every non-empty string is truthy
+  in Python, so `IMG_IN_RESPONSE=false` still evaluates to `True`.
+- **`on_disconnect` is never called successfully.** Its signature takes three arguments,
+  but paho-mqtt 2.x under `CallbackAPIVersion.VERSION2` calls it with five, so it raises
+  `TypeError` and the "Unexpected disconnection" warning never appears.
+- **A malformed frame terminates the process.** `on_message` has no error handling, so a
+  payload that fails to decode propagates out of `cv2.imdecode` and stops inference until
+  the container restarts.
+- **The container image runs CPU inference, not GPU.** `docker/Dockerfile` installs the
+  Jetson `onnxruntime_gpu` wheel and then runs `pip3 install -r requirements.txt`, which
+  contains a bare `onnxruntime`. Both packages provide the same `onnxruntime` module, so
+  the CPU build lands on top of the GPU one. Verified by building the image on
+  2026-10-06: both `onnxruntime 1.23.2` and `onnxruntime-gpu 1.17.0` end up installed,
+  `import onnxruntime` resolves to the CPU build, and the only execution providers
+  offered are `['AzureExecutionProvider', 'CPUExecutionProvider']` — while `app.py`
+  defaults to requesting `CUDAExecutionProvider`. Confirm on the device with
+  `python3 -c "import onnxruntime; print(onnxruntime.get_available_providers())"`.
+- **Dependencies are unpinned.** `src/requirements.txt` lists bare package names, so the
+  image contents depend on the day it was built. Pinning needs to be worked out against
+  an actual aarch64/cp310 build, since the local development versions resolve differently.
 
 ## License
 

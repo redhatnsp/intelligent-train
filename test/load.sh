@@ -11,16 +11,21 @@ MQTT_RESPONSE_TOPIC="${MQTT_RESPONSE_TOPIC:-train-model-result}"
 # Path to the image file
 IMAGE_FILE="${IMAGE_FILE:-test.jpg}"
 
+ITERATIONS="${ITERATIONS:-100}"
+
 declare -a float_list=()
 
-for ((i = 1; i <= 100; i++)); do
+for ((i = 1; i <= ITERATIONS; i++)); do
     echo "Iteration $i"
     start=$(date +%s.%N)
     . publish.sh
-    stop=$(mosquitto_sub -v -t "$MQTT_RESPONSE_TOPIC" -C 1 | xargs -d$'\n' -L1 bash -c 'date +%s.%N')
-    duration=$(echo "$stop - $start" | bc -q /dev/stdin )
+    # Block until one result comes back, then take the time. Previously piped through
+    # `xargs -d`, which is a GNU extension and fails on BSD/macOS.
+    mosquitto_sub -h "$MQTT_BROKER" -p "$MQTT_PORT" -t "$MQTT_RESPONSE_TOPIC" -C 1 > /dev/null
+    stop=$(date +%s.%N)
+    duration=$(awk "BEGIN{print $stop - $start}")
     float_list+=("$duration")
-    echo $duration
+    echo "$duration"
     sleep 0.1
 done
 
